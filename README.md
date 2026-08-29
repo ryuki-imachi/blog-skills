@@ -9,6 +9,34 @@
 | qiita-archive | 投稿後の後片付け。frontmatter更新・アーカイブ移動・ステータスボード更新 |
 | export-drawio | drawioの図を高解像度PNG（3倍・透過）に書き出し |
 
+## 全体のワークフロー
+
+前提として、記事は articles リポジトリ（プライベート）の `drafts/` で書き始めます。`drafts/` 配下のステータスフォルダ（10_アイデア / 20_執筆中 / 30_レビュー待ち / 40_限定公開）が記事の状態の正で、書き上がったらレビュー → 限定共有で投稿 → 本公開 → アーカイブと進みます。スキル3本はこの流れの決まった位置で呼ばれる、という分担です。
+
+![記事執筆ワークフロー全体図](images/workflow-overview.png)
+
+公開の最終操作（`npx qiita publish`）だけはスキルにやらせず、必ず人間が実行する線引きにしています。export-drawio はこの流れとは独立した小物で、記事に貼る図を書き出すときに単発で呼びます。
+
+## 各スキルの仕組み
+
+### review-blog（投稿前レビュー）
+
+文体ルール（`references/my-style.md`）と自分の過去記事2〜3本を必ず読んでからレビューする作りです。指摘は「機械的な修正（考えなくていい）」と「判断してほしい提案（考えるところ）」の2層に分けて出てきます。
+
+![review-blogの仕組み](images/review-blog-flow.png)
+
+### qiita-publish-prep（Qiita投稿準備）
+
+Obsidianで書いた下書きをQiita CLIが読める形に変換しつつ、画像をS3へ同期してMarkdown内の参照をCDNのURLに置き換えます。
+
+![qiita-publish-prepの仕組み](images/qiita-publish-prep-flow.png)
+
+### qiita-archive（投稿後の後片付け）
+
+slug と qiita_id を元下書きに残しておくことで、記事を更新するときも同じURL・同じ画像パスのまま再投稿できるようにしています。
+
+![qiita-archiveの仕組み](images/qiita-archive-flow.png)
+
 ## 導入方法
 
 フォルダごと `~/.claude/skills/` にコピーすると、Claude Codeで `/review-blog` のようにスラッシュコマンドとして呼べるようになります。
