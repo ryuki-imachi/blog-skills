@@ -7,7 +7,7 @@
 | review-blog | 投稿前レビュー。自分の過去記事を基準に、文体・構成・技術的正確性をチェック |
 | qiita-publish-prep | Qiita投稿準備。下書きをQiita CLI用に変換し、画像をS3+CloudFrontへ同期 |
 | qiita-archive | 投稿後の後片付け。frontmatter更新・アーカイブ移動・ステータスボード更新 |
-| export-drawio | drawioの図を高解像度PNG（3倍・透過）に書き出し |
+| export-drawio | drawioの図を高解像度PNG（3倍・白背景。`--transparent` で透過）に書き出し |
 
 ## 全体のワークフロー
 
@@ -52,7 +52,7 @@ cp -R review-blog qiita-publish-prep qiita-archive export-drawio ~/.claude/skill
 - review-blog … 過去記事のパスと `references/my-style.md`（文体ルール）を自分のものに差し替えれば使えます。まず自分の文体ルールを言語化するところから始めるのがおすすめです
 - qiita-publish-prep … S3+CloudFrontの画像配信基盤が前提なので、そのままでは動きません。変換ルールや「どこで人間に確認を取るか」の設計の参考にしてください
 - qiita-archive … パスを自分のリポジトリ構成に合わせれば使えます
-- export-drawio … draw.ioデスクトップアプリ（`brew install --cask drawio`）があればそのまま動きます
+- export-drawio … draw.ioデスクトップアプリ（`brew install --cask drawio`）があればそのまま動きます。既定は白背景（余白20px）で、`--transparent` を付けたときだけ透過にします。透過PNGはDiscordや暗いテーマのビューアで読めないことがあるので、貼る先が決まっていなければ白背景にしておく方が無難です
 
 ## 取り扱いについて
 
