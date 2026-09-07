@@ -6,7 +6,7 @@
 |---|---|
 | review-blog | 投稿前レビュー。自分の過去記事を基準に、文体・構成・技術的正確性をチェック |
 | qiita-publish-prep | Qiita投稿準備。下書きをQiita CLI用に変換し、画像をS3+CloudFrontへ同期 |
-| qiita-archive | 投稿後の後片付け。frontmatter更新・アーカイブ移動・ステータスボード更新 |
+| qiita-archive | 投稿後の後片付け。Pythonスクリプトがfrontmatter更新とアーカイブ移動を行い、スキル側はステータスボードの更新だけ |
 | export-drawio | drawioの図を高解像度PNG（3倍・透過）に書き出し |
 
 ## 全体のワークフロー
@@ -35,6 +35,8 @@ Obsidianで書いた下書きをQiita CLIが読める形に変換しつつ、画
 
 slug と qiita_id を元下書きに残しておくことで、記事を更新するときも同じURL・同じ画像パスのまま再投稿できるようにしています。
 
+frontmatter の更新とファイル移動は `scripts/qiita_archive.py` に切り出しました（2026-09-04）。`inspect` で対象と公開状態を確かめ（未公開なら止まる）、`apply` で `status` / `qiita_id` / `published_at` を書き込んでレビューレポートごと `published/` へ移します。スキルに残したのはステータスボード（board.md）の更新だけで、ここは記事ごとに書く内容が違うので自動化していません。
+
 ![qiita-archiveの仕組み](images/qiita-archive-flow.png)
 
 ## 導入方法
@@ -51,7 +53,7 @@ cp -R review-blog qiita-publish-prep qiita-archive export-drawio ~/.claude/skill
 
 - review-blog … 過去記事のパスと `references/my-style.md`（文体ルール）を自分のものに差し替えれば使えます。まず自分の文体ルールを言語化するところから始めるのがおすすめです
 - qiita-publish-prep … S3+CloudFrontの画像配信基盤が前提なので、そのままでは動きません。変換ルールや「どこで人間に確認を取るか」の設計の参考にしてください
-- qiita-archive … パスを自分のリポジトリ構成に合わせれば使えます
+- qiita-archive … `scripts/qiita_archive.py` 先頭の定数（記事リポジトリと Qiita CLI ワークスペースのパス）を自分の構成に合わせれば使えます
 - export-drawio … draw.ioデスクトップアプリ（`brew install --cask drawio`）があればそのまま動きます
 
 ## 取り扱いについて
