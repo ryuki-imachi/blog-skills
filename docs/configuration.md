@@ -61,7 +61,7 @@ claude --plugin-dir ~/path/to/blog-skills
 mkdir -p ~/claude-plugins-local/.claude-plugin
 cd ~/claude-plugins-local
 ln -s ../blog-skills blog-skills
-curl -sL https://raw.githubusercontent.com/ryuki-imachi/claude-plugins/main/.claude-plugin/marketplace.json \
+curl -sL https://raw.githubusercontent.com/umitsu-tech/claude-plugins/main/.claude-plugin/marketplace.json \
   -o .claude-plugin/marketplace.json
 ```
 
@@ -72,4 +72,4 @@ claude plugin marketplace add ~/claude-plugins-local
 claude plugin install blog-skills@ryuki-plugins --config articles_dir=~/work/articles
 ```
 
-変更を反映するには `claude plugin update blog-skills@ryuki-plugins` を実行します。GitHub 版に戻すときは `claude plugin marketplace add ryuki-imachi/claude-plugins` を再実行します。
+変更を反映するには `claude plugin update blog-skills@ryuki-plugins` を実行します。GitHub 版に戻すときは `claude plugin marketplace add umitsu-tech/claude-plugins` を再実行します。
