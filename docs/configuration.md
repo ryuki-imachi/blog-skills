@@ -55,11 +55,21 @@ python3 skills/qiita-publish-prep/scripts/qiita_prep.py apply ~/work/articles/dr
 claude --plugin-dir ~/path/to/blog-skills
 ```
 
-設定値まで含めて本番と同じ形で試すなら、配布元のマーケットプレイス（[ryuki-imachi/claude-plugins](https://github.com/ryuki-imachi/claude-plugins)）を手元に clone し、`marketplace.json` の blog-skills の `source` を手元のリポジトリの相対パスに書き換えたものを登録してインストールします。
+設定値まで含めて本番と同じ形で試すなら、手元のリポジトリを指すマーケットプレイスを別ディレクトリに作って登録します。`marketplace.json` の `source` にはマーケットプレイスの直下より上（`..` を含むパス）を指定できないので、リポジトリへのシンボリックリンクを直下に置きます。
 
 ```
-claude plugin marketplace add ~/path/to/claude-plugins
+mkdir -p ~/claude-plugins-local/.claude-plugin
+cd ~/claude-plugins-local
+ln -s ../blog-skills blog-skills
+curl -sL https://raw.githubusercontent.com/ryuki-imachi/claude-plugins/main/.claude-plugin/marketplace.json \
+  -o .claude-plugin/marketplace.json
+```
+
+`marketplace.json` の blog-skills の `source` を `"./blog-skills"` に書き換えてから登録すると、同じ名前（ryuki-plugins）の登録が置き換わり、手元のリポジトリからインストールされます。
+
+```
+claude plugin marketplace add ~/claude-plugins-local
 claude plugin install blog-skills@ryuki-plugins --config articles_dir=~/work/articles
 ```
 
-変更を反映するには `claude plugin update blog-skills@ryuki-plugins` を実行します。GitHub 版に戻すときは `claude plugin marketplace add ryuki-imachi/claude-plugins` を再実行すると、同じ名前の登録が置き換わります。
+変更を反映するには `claude plugin update blog-skills@ryuki-plugins` を実行します。GitHub 版に戻すときは `claude plugin marketplace add ryuki-imachi/claude-plugins` を再実行します。
