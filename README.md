@@ -5,7 +5,7 @@
 | スキル | 役割 |
 |---|---|
 | review-blog | 投稿前レビュー。自分の過去記事を基準に、文体・構成・技術的正確性をチェック |
-| qiita-publish-prep | Qiita投稿準備。下書きをQiita CLI用に変換し、画像をS3+CloudFrontへ同期 |
+| qiita-publish-prep | Qiita投稿準備。Pythonスクリプトが下書きをQiita CLI用に変換し、画像をS3+CloudFrontへ同期。スキル側はslug・画像名・組織の3つを判断するだけ |
 | qiita-archive | 投稿後の後片付け。Pythonスクリプトがfrontmatter更新とアーカイブ移動を行い、スキル側はステータスボードの更新だけ |
 | export-drawio | drawioの図を高解像度PNG（3倍・透過）に書き出し |
 
@@ -27,7 +27,9 @@
 
 ### qiita-publish-prep（Qiita投稿準備）
 
-Obsidianで書いた下書きをQiita CLIが読める形に変換しつつ、画像をS3へ同期してMarkdown内の参照をCDNのURLに置き換えます。
+articlesで書いた下書きをQiita CLIが読める形に変換しつつ、画像をS3へ同期してMarkdown内の参照をCDNのURLに置き換えます。
+
+変換・検証・ファイル操作は `scripts/qiita_prep.py` に切り出してあり、決定論的に動きます（2026-09-04にスクリプト化）。`inspect` で下書きを解析して frontmatter・画像の所在・変換対象・警告を出し、`apply` で slug の書き戻し → 画像の集約 → S3 同期 → 本文変換 → 出力までを一度に行います。スキル（SKILL.md）に残した仕事は、スクリプトが自力で決められない3つの判断だけです。S3 のプレフィックスになる slug、日本語や記号を含む画像ファイルの英語名、Qiita の organization を付けるかどうか。ここは記事を読んで候補を出し、人間に選んでもらいます。
 
 ![qiita-publish-prepの仕組み](images/qiita-publish-prep-flow.png)
 
@@ -52,7 +54,7 @@ cp -R review-blog qiita-publish-prep qiita-archive export-drawio ~/.claude/skill
 私の環境（ファイルパス・過去記事の置き場・運用ルール）が手順書にそのまま書いてあるので、動かすには自分の環境向けの書き換えが必要です。
 
 - review-blog … 過去記事のパスと `references/my-style.md`（文体ルール）を自分のものに差し替えれば使えます。まず自分の文体ルールを言語化するところから始めるのがおすすめです
-- qiita-publish-prep … S3+CloudFrontの画像配信基盤が前提なので、そのままでは動きません。変換ルールや「どこで人間に確認を取るか」の設計の参考にしてください
+- qiita-publish-prep … S3+CloudFrontの画像配信基盤が前提なので、そのままでは動きません。`scripts/qiita_prep.py` 先頭の定数（記事リポジトリのパス、バケット名、CDNのドメイン）を自分の環境に合わせれば動く作りです。変換ルールや「どこで人間に確認を取るか」の設計の参考にしてください
 - qiita-archive … `scripts/qiita_archive.py` 先頭の定数（記事リポジトリと Qiita CLI ワークスペースのパス）を自分の構成に合わせれば使えます
 - export-drawio … draw.ioデスクトップアプリ（`brew install --cask drawio`）があればそのまま動きます
 
