@@ -18,19 +18,60 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from dataclasses import dataclass
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-HOME = Path.home()
-ARTICLES = HOME / "Desktop/work/articles"
-IMAGES_ROOT = ARTICLES / "images"
-OBSIDIAN = HOME / "Desktop/work/obsidian"
-QIITA_PUBLIC = HOME / "Desktop/work/qiita/public"
-BUCKET = "<your-bucket>"
-CDN_BASE = "https://<your-cdn-domain>"
+# ------------------------------------------------------------------- 環境
+
+def _pick(value, env_name):
+    v = value if value is not None else os.environ.get(env_name, "")
+    v = v.strip()
+    return v or None
+
+
+def _require(pairs):
+    missing = [name for name, v in pairs if not v]
+    if missing:
+        sys.exit("環境固有の値が未設定です: " + ", ".join(missing)
+                 + "\n  プラグインの設定（/plugin configure blog-skills@ryuki-plugins）で入力するか、"
+                 "引数または BLOG_SKILLS_* 環境変数で指定してください")
+
+
+@dataclass(frozen=True)
+class Env:
+    """環境固有の値。引数（無ければ BLOG_SKILLS_* 環境変数）から組み立て、必要な関数に渡す。"""
+    articles: Path            # 記事リポジトリ(drafts/ images/ published/)
+    qiita_public: Path        # Qiita CLI ワークスペースの public/
+    obsidian: Path | None     # 旧置き場(任意。画像の探索先に加える)
+    bucket: str | None        # 画像の同期先 S3 バケット(同期するときだけ必須)
+    cdn_base: str | None      # https://<cdn_domain>
+
+    @property
+    def images_root(self) -> Path:
+        return self.articles / "images"
+
+    @classmethod
+    def from_args(cls, args, need_aws: bool) -> "Env":
+        articles = _pick(args.articles_dir, "BLOG_SKILLS_ARTICLES_DIR")
+        qiita = _pick(args.qiita_dir, "BLOG_SKILLS_QIITA_DIR")
+        obsidian = _pick(args.obsidian_dir, "BLOG_SKILLS_OBSIDIAN_DIR")
+        bucket = _pick(args.bucket, "BLOG_SKILLS_BUCKET")
+        cdn = _pick(args.cdn_domain, "BLOG_SKILLS_CDN_DOMAIN")
+        required = [("--articles-dir", articles), ("--qiita-dir", qiita)]
+        if need_aws:
+            required += [("--bucket", bucket), ("--cdn-domain", cdn)]
+        _require(required)
+        return cls(
+            articles=Path(articles).expanduser().resolve(),
+            qiita_public=Path(qiita).expanduser().resolve() / "public",
+            obsidian=Path(obsidian).expanduser().resolve() if obsidian else None,
+            bucket=bucket,
+            cdn_base="https://" + re.sub(r"^https?://", "", cdn).rstrip("/") if cdn else None,
+        )
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"}
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -181,7 +222,7 @@ def unquote_path(p: str) -> str:
     return unquote(p)
 
 
-def resolve_image(name: str, target: str, draft_dir: Path, slug: str):
+def resolve_image(env: Env, name: str, target: str, draft_dir: Path, slug: str):
     """画像の実体を探す。SKILL.md の検索順(記事リポジトリ → 旧置き場)に従う。"""
     cand = unquote_path(target)
     probes = []
@@ -189,14 +230,14 @@ def resolve_image(name: str, target: str, draft_dir: Path, slug: str):
         probes.append(Path(cand))
     else:
         probes.append((draft_dir / cand).resolve())
-        probes.append((ARTICLES / cand).resolve())
+        probes.append((env.articles / cand).resolve())
     if slug:
-        probes.append(IMAGES_ROOT / slug / name)
+        probes.append(env.images_root / slug / name)
     for p in probes:
         if p.is_file():
             return p, "direct"
-    for root, label in ((IMAGES_ROOT, "articles/images"), (OBSIDIAN, "obsidian(旧置き場)")):
-        if not root.is_dir():
+    for root, label in ((env.images_root, "articles/images"), (env.obsidian, "旧置き場")):
+        if root is None or not root.is_dir():
             continue
         for p in root.rglob(name):
             if any(part in (".obsidian", ".trash", ".git") for part in p.parts):
@@ -442,7 +483,7 @@ def build_qiita_fm(title, tags, qiita_id, private, organization, existing=None):
 
 # ------------------------------------------------------------------- 解析まとめ
 
-def analyze(draft: Path, slug_override=None):
+def analyze(env: Env, draft: Path, slug_override=None):
     text = draft.read_text(encoding="utf-8")
     fm_text, body, has_fm = split_frontmatter(text)
     fm = parse_fm(fm_text)
@@ -470,7 +511,7 @@ def analyze(draft: Path, slug_override=None):
 
     refs, seen = [], {}
     for r in find_image_refs(body):
-        path, where = resolve_image(r["name"], r["target"], draft.parent, slug or "")
+        path, where = resolve_image(env, r["name"], r["target"], draft.parent, slug or "")
         r["resolved"] = str(path) if path else None
         r["found_in"] = where
         r["needs_rename"] = needs_rename(r["name"])
@@ -491,8 +532,8 @@ def analyze(draft: Path, slug_override=None):
 
 # ---------------------------------------------------------------------- 出力
 
-def cmd_inspect(args):
-    a = analyze(Path(args.draft).expanduser().resolve(), args.slug)
+def cmd_inspect(env: Env, args):
+    a = analyze(env, Path(args.draft).expanduser().resolve(), args.slug)
     if args.json:
         payload = {k: v for k, v in a.items() if k not in ("fm_text", "body", "resolved")}
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -555,12 +596,12 @@ def run(cmd, dry, check=True):
     return p.returncode, p.stdout
 
 
-def cmd_apply(args):
+def cmd_apply(env: Env, args):
     draft = Path(args.draft).expanduser().resolve()
     dry = args.dry_run
     renames = dict(r.split("=", 1) for r in args.rename)
 
-    a = analyze(draft, args.slug)
+    a = analyze(env, draft, args.slug)
     slug = a["slug"]
     if not slug:
         print("ERROR: slug がありません。--slug で渡してください。", file=sys.stderr)
@@ -576,7 +617,7 @@ def cmd_apply(args):
         return 1
 
     print(f"■ slug: {slug}")
-    dest_dir = IMAGES_ROOT / slug
+    dest_dir = env.images_root / slug
 
     # 1) 変名(原本 + 下書き本文の参照を同時に書き換える)
     body, fm_text = a["body"], a["fm_text"]
@@ -643,25 +684,25 @@ def cmd_apply(args):
             print("  ! AWS 認証が切れています。`aws login` の後に再実行してください。", file=sys.stderr)
             return 2
         rc, _ = run(["aws", "s3", "sync", str(dest_dir) + "/",
-                     f"s3://{BUCKET}/{slug}/", "--exclude", ".DS_Store", "--size-only"], dry)
+                     f"s3://{env.bucket}/{slug}/", "--exclude", ".DS_Store", "--size-only"], dry)
         if rc != 0:
             return 2
         synced = True
         first = next(iter(sorted(a["resolved"])), None)
         if first and not dry:
-            url = f"{CDN_BASE}/{slug}/{first}"
+            url = f"{env.cdn_base}/{slug}/{first}"
             rc, out = run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
                            "-I", url], dry, check=False)
             print(f"    CDN 応答 {out.strip()} : {url}")
 
     # 5) 本文変換
-    url_for = {n: f"{CDN_BASE}/{slug}/{n}" for n in a["resolved"]}
+    url_for = {n: f"{env.cdn_base}/{slug}/{n}" for n in a["resolved"]}
     new_body, counts, warns = transform(body, slug, url_for)
 
     # 6) 出力
-    out_path = Path(args.out).expanduser() if args.out else QIITA_PUBLIC / f"{slug}.md"
+    out_path = Path(args.out).expanduser() if args.out else env.qiita_public / f"{slug}.md"
     # 引き継ぎ元は常に本来の出力先(--out はプレビュー用の書き出し先にすぎない)
-    existing = read_existing_output(QIITA_PUBLIC / f"{slug}.md")
+    existing = read_existing_output(env.qiita_public / f"{slug}.md")
     qiita_id = args.id or a["qiita_id"] or unquote_scalar(existing.get("id", ""))
     # private は既存の出力があればその値を引き継ぐ(公開済み記事を勝手に限定共有へ
     # 戻さないため)。新規は true。--public / --private で明示上書きできる。
@@ -710,15 +751,22 @@ def cmd_apply(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    common = argparse.ArgumentParser(add_help=False)
+    g = common.add_argument_group("環境固有の値(未指定なら BLOG_SKILLS_* 環境変数を使う)")
+    g.add_argument("--articles-dir", help="記事リポジトリ(drafts/ images/ published/ がある場所)")
+    g.add_argument("--qiita-dir", help="Qiita CLI ワークスペース(public/ に出力する)")
+    g.add_argument("--obsidian-dir", help="旧置き場(任意。画像の探索先に加える)")
+    g.add_argument("--bucket", help="画像の同期先 S3 バケット名(apply で必須)")
+    g.add_argument("--cdn-domain", help="CloudFront のドメイン(apply で必須。例 images.example.com)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    i = sub.add_parser("inspect", help="解析のみ(ファイルを変更しない)")
+    i = sub.add_parser("inspect", parents=[common], help="解析のみ(ファイルを変更しない)")
     i.add_argument("draft")
     i.add_argument("--slug", help="frontmatter に slug が無い場合の仮指定")
     i.add_argument("--json", action="store_true")
     i.set_defaults(func=cmd_inspect)
 
-    p = sub.add_parser("apply", help="集約・S3同期・変換・出力を実行")
+    p = sub.add_parser("apply", parents=[common], help="集約・S3同期・変換・出力を実行")
     p.add_argument("draft")
     p.add_argument("--slug", help="slug(下書きの frontmatter にも書き戻す)")
     p.add_argument("--rename", action="append", default=[], metavar="OLD=NEW",
@@ -738,7 +786,8 @@ def main():
     p.set_defaults(func=cmd_apply)
 
     args = ap.parse_args()
-    return args.func(args)
+    env = Env.from_args(args, need_aws=(args.cmd == "apply" and not args.skip_sync))
+    return args.func(env, args)
 
 
 if __name__ == "__main__":

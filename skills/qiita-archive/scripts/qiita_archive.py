@@ -20,20 +20,63 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import os
 import re
+from dataclasses import dataclass
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-HOME = Path.home()
-ARTICLES = HOME / "Desktop/work/articles"
-DRAFTS = ARTICLES / "drafts"
-PUBLISHED = ARTICLES / "published"
-BOARD = ARTICLES / "board.md"
-OBSIDIAN_MEMO = HOME / "Desktop/work/obsidian/memo"
-QIITA_PUBLIC = HOME / "Desktop/work/qiita/public"
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+# ------------------------------------------------------------------- 環境
+
+def _pick(value, env_name):
+    v = value if value is not None else os.environ.get(env_name, "")
+    v = v.strip()
+    return v or None
+
+
+def _require(pairs):
+    missing = [name for name, v in pairs if not v]
+    if missing:
+        sys.exit("環境固有の値が未設定です: " + ", ".join(missing)
+                 + "\n  プラグインの設定（/plugin configure blog-skills@ryuki-plugins）で入力するか、"
+                 "引数または BLOG_SKILLS_* 環境変数で指定してください")
+
+
+@dataclass(frozen=True)
+class Env:
+    """環境固有の値。引数（無ければ BLOG_SKILLS_* 環境変数）から組み立て、必要な関数に渡す。"""
+    articles: Path          # 記事リポジトリ(published/ board.md)
+    qiita_dir: Path         # Qiita CLI ワークスペース(public/ を参照する)
+    obsidian: Path | None   # 旧置き場(任意。slug で下書きを探すときの探索先に加える)
+
+    @property
+    def published(self) -> Path:
+        return self.articles / "published"
+
+    @property
+    def board(self) -> Path:
+        return self.articles / "board.md"
+
+    @property
+    def qiita_public(self) -> Path:
+        return self.qiita_dir / "public"
+
+    @classmethod
+    def from_args(cls, args) -> "Env":
+        articles = _pick(args.articles_dir, "BLOG_SKILLS_ARTICLES_DIR")
+        qiita = _pick(args.qiita_dir, "BLOG_SKILLS_QIITA_DIR")
+        obsidian = _pick(args.obsidian_dir, "BLOG_SKILLS_OBSIDIAN_DIR")
+        _require([("--articles-dir", articles), ("--qiita-dir", qiita)])
+        return cls(
+            articles=Path(articles).expanduser().resolve(),
+            qiita_dir=Path(qiita).expanduser().resolve(),
+            obsidian=Path(obsidian).expanduser().resolve() if obsidian else None,
+        )
 
 
 # ---------------------------------------------------------------- frontmatter
@@ -112,17 +155,18 @@ def fm_upsert(fm: str, key: str, value) -> str:
 
 # --------------------------------------------------------------------- 解決
 
-def resolve_draft(arg: str):
+def resolve_draft(env: Env, arg: str):
     """引数（パス or slug）から下書きファイルを1つに特定する。"""
     p = Path(arg).expanduser()
     if p.is_file():
         return p.resolve(), None
     if not SLUG_RE.match(arg):
         return None, f"パスとして存在せず、slug の形式でもありません: {arg}"
-    roots = [str(d) for d in (ARTICLES, OBSIDIAN_MEMO) if d.is_dir()]
+    roots = [str(d) for d in (env.articles, env.obsidian) if d is not None and d.is_dir()]
     hits = subprocess.run(
         ["grep", "-rlE", rf"^slug:\s*['\"]?{re.escape(arg)}['\"]?\s*$",
-         "--include=*.md", *roots],
+         "--include=*.md", "--exclude-dir=.obsidian", "--exclude-dir=.trash",
+         "--exclude-dir=.git", *roots],
         capture_output=True, text=True).stdout.split()
     hits = [Path(h) for h in hits if not h.endswith(".review.md")]
     if not hits:
@@ -142,8 +186,8 @@ def review_report_for(draft: Path):
     return None
 
 
-def analyze(arg: str):
-    draft, err = resolve_draft(arg)
+def analyze(env: Env, arg: str):
+    draft, err = resolve_draft(env, arg)
     if err:
         return {"error": err}
     text = draft.read_text(encoding="utf-8")
@@ -153,12 +197,12 @@ def analyze(arg: str):
 
     info = {"draft": draft, "fm": fm, "fm_text": fm_text, "body": body,
             "slug": slug, "review": review_report_for(draft),
-            "in_published": PUBLISHED in draft.parents, "blockers": [], "warns": []}
+            "in_published": env.published in draft.parents, "blockers": [], "warns": []}
     if not has_fm or not slug:
         info["blockers"].append("下書きに slug がありません → 先に /qiita-publish-prep を実行")
         return info
 
-    out = QIITA_PUBLIC / f"{slug}.md"
+    out = env.qiita_public / f"{slug}.md"
     info["qiita_file"] = out
     if not out.is_file():
         info["blockers"].append(f"{out} がありません → 先に /qiita-publish-prep を実行")
@@ -169,18 +213,18 @@ def analyze(arg: str):
     info["qiita_title"] = qfm.get("title")
     if not info["qiita_id"]:
         info["blockers"].append(
-            f"id が null です → `cd ~/Desktop/work/qiita && npx qiita publish {slug}` を先に実行")
+            f"id が null です → `cd {env.qiita_dir} && npx qiita publish {slug}` を先に実行")
     if info["private"]:
         info["warns"].append("private: true のままです（限定共有）。本公開後にアーカイブするのが本来の順序")
     if fm.get("status") == "published":
         info["warns"].append("下書きは既に status: published です（再実行）")
     if info["in_published"]:
         info["warns"].append("下書きは既に published/ にあります（移動はスキップ）")
-    dest = PUBLISHED / draft.name
+    dest = env.published / draft.name
     if not info["in_published"] and dest.exists():
         info["blockers"].append(f"移動先に同名ファイルがあります: {dest}")
     if info["review"] and not info["in_published"]:
-        rdest = PUBLISHED / info["review"].name
+        rdest = env.published / info["review"].name
         if rdest.exists():
             info["blockers"].append(f"レビューレポートの移動先に同名ファイル: {rdest}")
     return info
@@ -188,7 +232,7 @@ def analyze(arg: str):
 
 # --------------------------------------------------------------------- 実行
 
-def show(info):
+def show(env: Env, info):
     print(f"下書き   : {info['draft']}")
     print(f"slug     : {info.get('slug') or '(なし)'}")
     print(f"status   : {info['fm'].get('status')}  →  published")
@@ -196,7 +240,7 @@ def show(info):
     print(f"private  : {info.get('private')}")
     print(f"Qiita側  : {info.get('qiita_file') or '(なし)'}")
     print(f"レビュー : {info['review'] or '(なし)'}")
-    print(f"移動先   : {PUBLISHED / info['draft'].name}"
+    print(f"移動先   : {env.published / info['draft'].name}"
           f"{'  (既に published/ にあるため移動しない)' if info['in_published'] else ''}")
     for w in info["warns"]:
         print(f"  ⚠ {w}")
@@ -204,12 +248,12 @@ def show(info):
         print(f"  ✗ {b}")
 
 
-def cmd_inspect(args):
-    info = analyze(args.target)
+def cmd_inspect(env: Env, args):
+    info = analyze(env, args.target)
     if "error" in info:
         print(f"ERROR: {info['error']}", file=sys.stderr)
         return 1
-    show(info)
+    show(env, info)
     print()
     print("■ 次のアクション")
     if info["blockers"]:
@@ -220,8 +264,8 @@ def cmd_inspect(args):
     return 1 if info["blockers"] else 0
 
 
-def cmd_apply(args):
-    info = analyze(args.target)
+def cmd_apply(env: Env, args):
+    info = analyze(env, args.target)
     if "error" in info:
         print(f"ERROR: {info['error']}", file=sys.stderr)
         return 1
@@ -253,9 +297,9 @@ def cmd_apply(args):
     if info["in_published"]:
         print("■ 移動: 既に published/ にあるためスキップ")
     else:
-        PUBLISHED.mkdir(parents=True, exist_ok=True)
+        env.published.mkdir(parents=True, exist_ok=True)
         for src in [draft] + ([info["review"]] if info["review"] else []):
-            dest = PUBLISHED / src.name
+            dest = env.published / src.name
             print(f"■ 移動: {src}\n        -> {dest}")
             if not dry:
                 shutil.move(str(src), str(dest))
@@ -274,7 +318,7 @@ def cmd_apply(args):
         print(f"  ⚠ {w}")
     print()
     print("■ 残作業（Claude が担当・スクリプトは触らない）")
-    print(f"  - {BOARD} の該当行をボードから削除し、完了ログの先頭に1行追記する")
+    print(f"  - {env.board} の該当行をボードから削除し、完了ログの先頭に1行追記する")
     if dry:
         print("\n  (--dry-run のため実際の書き込みは行っていません)")
     return 0
@@ -283,11 +327,16 @@ def cmd_apply(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    common = argparse.ArgumentParser(add_help=False)
+    g = common.add_argument_group("環境固有の値（未指定なら BLOG_SKILLS_* 環境変数を使う）")
+    g.add_argument("--articles-dir", help="記事リポジトリ（drafts/ published/ board.md がある場所）")
+    g.add_argument("--qiita-dir", help="Qiita CLI ワークスペース（public/ を参照する）")
+    g.add_argument("--obsidian-dir", help="旧置き場（任意。slug で下書きを探すときの探索先に加える）")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    i = sub.add_parser("inspect", help="特定・検証のみ（変更しない）")
+    i = sub.add_parser("inspect", parents=[common], help="特定・検証のみ（変更しない）")
     i.add_argument("target", help="下書きの絶対パス、または slug")
     i.set_defaults(func=cmd_inspect)
-    a = sub.add_parser("apply", help="frontmatter 更新とファイル移動を実行")
+    a = sub.add_parser("apply", parents=[common], help="frontmatter 更新とファイル移動を実行")
     a.add_argument("target", help="下書きの絶対パス、または slug")
     a.add_argument("--date", help="published_at（既定は既存値、無ければ今日）")
     a.add_argument("--allow-private", action="store_true",
@@ -295,7 +344,8 @@ def main():
     a.add_argument("--dry-run", action="store_true")
     a.set_defaults(func=cmd_apply)
     args = ap.parse_args()
-    return args.func(args)
+    env = Env.from_args(args)
+    return args.func(env, args)
 
 
 if __name__ == "__main__":

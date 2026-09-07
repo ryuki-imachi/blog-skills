@@ -1,6 +1,6 @@
 ---
 name: qiita-publish-prep
-description: articles/の下書きをQiita CLI用に変換。画像をS3+CloudFrontに同期し、Markdown内のパスをCDN URLに置換、Wikilinks/Callouts/Obsidianコメント/frontmatterをQiita仕様に整形して ~/Desktop/work/qiita/public/<slug>.md に出力する
+description: 記事リポジトリの下書きをQiita CLI用に変換。画像をS3+CloudFrontに同期し、Markdown内のパスをCDN URLに置換、Wikilinks/Callouts/Obsidianコメント/frontmatterをQiita仕様に整形して Qiita CLI ワークスペースの public/<slug>.md に出力する
 user-invocable: true
 argument-hint: "<下書きMDファイルパス>"
 allowed-tools:
@@ -14,27 +14,39 @@ allowed-tools:
 
 # qiita-publish-prep
 
-articles リポジトリの下書きを Qiita CLI が読める形に変換し、画像を
-S3 (`<your-bucket>`) + CloudFront (`<your-cdn-domain>`) へ同期する。
+記事リポジトリの下書きを Qiita CLI が読める形に変換し、画像を
+S3 (`${user_config.bucket}`) + CloudFront (`${user_config.cdn_domain}`) へ同期する。
 
 変換・検証・ファイル操作は `scripts/qiita_prep.py` が決定論的に行う。
 このスキルの仕事は、スクリプトが自力で決められない3つの判断だけ。
 
 ## 前提
 
-- 画像配信基盤: CDK 構築済み（`~/Desktop/work/blog-pipeline/cdk`）
-- Qiita CLI ワークスペース: `~/Desktop/work/qiita/`
-- 記事リポジトリ: `~/Desktop/work/articles/`（下書きは drafts/ 配下、画像原本は images/<slug>/）
-- 旧置き場（過去記事の画像・下書き）: `~/Desktop/work/obsidian/`
-- AWS 認証は SSO。切れていればスクリプトが検出して止まるので `aws login` を案内する
-- 下書きの frontmatter 規約は `~/Desktop/work/blog-pipeline/DECISIONS.md` の D-18
+環境固有の値はプラグインの設定（userConfig）から受け取る。
+
+- 記事リポジトリ: `${user_config.articles_dir}`（下書きは drafts/ 配下、画像原本は images/<slug>/）
+- Qiita CLI ワークスペース: `${user_config.qiita_dir}`（public/ に出力する）
+- 旧置き場（記事リポジトリへ移す前の画像・下書き。任意）: `${user_config.obsidian_dir}`
+- 画像配信基盤: S3 バケット `${user_config.bucket}` + CloudFront `${user_config.cdn_domain}`（構築済みであること）
+- AWS 認証が切れていればスクリプトが検出して止まるので、ログインし直すよう案内する
+
+上の値が空のときはスクリプトが「環境固有の値が未設定です」と止まる。その場合は
+`/plugin configure blog-skills@ryuki-plugins` で設定するよう案内して中止する。
+
+スクリプトには毎回、次の共通オプションをまとめて渡す（以下 `<共通オプション>` と書く）。
+
+```
+--articles-dir "${user_config.articles_dir}" --qiita-dir "${user_config.qiita_dir}" \
+--obsidian-dir "${user_config.obsidian_dir}" --bucket "${user_config.bucket}" \
+--cdn-domain "${user_config.cdn_domain}"
+```
 
 ## 手順
 
 ### 1. 解析
 
 ```bash
-~/.claude/skills/qiita-publish-prep/scripts/qiita_prep.py inspect <下書きパス>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/qiita-publish-prep/scripts/qiita_prep.py" inspect <下書きパス> <共通オプション>
 ```
 
 frontmatter、画像参照とその所在、変換対象の件数、警告が出る。ファイルは変更されない。
@@ -61,7 +73,7 @@ inspect の出力を見て、次の3つを決める。
 ### 3. 実行
 
 ```bash
-~/.claude/skills/qiita-publish-prep/scripts/qiita_prep.py apply <下書きパス> \
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/qiita-publish-prep/scripts/qiita_prep.py" apply <下書きパス> <共通オプション> \
   [--slug SLUG] [--rename OLD=NEW]... [--organization NAME] [--skip-sync] [--dry-run]
 ```
 
@@ -85,7 +97,7 @@ apply が出す `⚠` は、変換はせずに知らせるだけの項目。中�
 出力先、S3 プレフィックス、CDN ベース URL、apply のサマリをそのまま伝えたうえで、次の流れを案内する。
 
 ```
-1. プレビュー   cd ~/Desktop/work/qiita && npx qiita preview      # localhost:8888
+1. プレビュー   cd ${user_config.qiita_dir} && npx qiita preview   # localhost:8888
 2. 限定共有投稿  npx qiita publish <slug>                          # private: true のまま
 3. Qiita 上で表示確認（限定共有中の URL は https://qiita.com/<user>/private/<id> 形式。
    /items/<id> は本公開後なので、限定共有中にこのリンクを案内しない）
@@ -110,10 +122,10 @@ apply が出す `⚠` は、変換はせずに知らせるだけの項目。中�
 | 処理 | 内容 |
 |---|---|
 | frontmatter 検証 | slug の形式、title、タグ 1〜5個・`/` 不可 |
-| 画像の所在解決 | articles/images → 旧 obsidian の順に探索。相対・絶対・Wikilink 記法すべて |
-| 画像の集約 | `articles/images/<slug>/` へコピー（既存は上書きしない） |
+| 画像の所在解決 | 記事リポジトリの images/ → 旧置き場の順に探索。相対・絶対・Wikilink 記法すべて |
+| 画像の集約 | 記事リポジトリの `images/<slug>/` へコピー（既存は上書きしない） |
 | S3 同期 | `aws s3 sync --size-only`、直後に CDN の応答コードを1件確認 |
-| 画像パス | ローカル参照を `https://<your-cdn-domain>/<slug>/<file>` に置換 |
+| 画像パス | ローカル参照を `https://${user_config.cdn_domain}/<slug>/<file>` に置換 |
 | Wikilink | `[[a]]` → `a`、`[[a\|b]]` → `b`（削除ではなくテキスト化） |
 | Callout | `> [!note\|info\|tip]` → `:::note info`、`warning\|caution` → `warn`、`danger\|error\|failure` → `alert`。対応表に無い種別は素の引用のまま |
 | Obsidian コメント | `%% ... %%`（ブロック・インライン）を除去。執筆メモを Qiita に漏らさない |
@@ -125,6 +137,4 @@ apply が出す `⚠` は、変換はせずに知らせるだけの項目。中�
 ## 関連
 
 - 後片付け: `qiita-archive`（本公開後に呼ぶ）
-- インフラ: `~/Desktop/work/blog-pipeline/cdk/lib/blog-assets-stack.ts`
-- 設計判断: `~/Desktop/work/blog-pipeline/DECISIONS.md`（D-18 frontmatter 規約）
-- 運用ルール: `~/Desktop/work/articles/README.md`
+- 下書きの frontmatter 規約や運用ルールが記事リポジトリ（`${user_config.articles_dir}`）の README にあれば、それに従う
