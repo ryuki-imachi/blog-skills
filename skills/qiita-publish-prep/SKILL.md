@@ -31,7 +31,7 @@ S3 (`${user_config.bucket}`) + CloudFront (`${user_config.cdn_domain}`) へ同�
 - AWS 認証が切れていればスクリプトが検出して止まるので、ログインし直すよう案内する
 
 上の値が空のときはスクリプトが「環境固有の値が未設定です」と止まる。その場合は
-`/plugin configure blog-skills@ryuki-blog-skills` で設定するよう案内して中止する。
+`/plugin configure blog-skills@ryuki-plugins` で設定するよう案内して中止する。
 
 スクリプトには毎回、次の共通オプションをまとめて渡す（以下 `<共通オプション>` と書く）。
 

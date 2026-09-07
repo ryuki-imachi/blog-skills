@@ -43,7 +43,7 @@ def _require(pairs):
     missing = [name for name, v in pairs if not v]
     if missing:
         sys.exit("環境固有の値が未設定です: " + ", ".join(missing)
-                 + "\n  プラグインの設定（/plugin configure blog-skills@ryuki-blog-skills）で入力するか、"
+                 + "\n  プラグインの設定（/plugin configure blog-skills@ryuki-plugins）で入力するか、"
                  "引数または BLOG_SKILLS_* 環境変数で指定してください")
 
 

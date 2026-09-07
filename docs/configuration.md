@@ -13,7 +13,7 @@
 | `style_file` | ファイル | review-blog が最初に読む文体ルールの Markdown。[skills/review-blog/references/my-style.md](../skills/review-blog/references/my-style.md) を参考に自分のものを書く | review-blog |
 | `obsidian_dir` | ディレクトリ（任意） | 記事リポジトリへ移す前の下書きや画像が残っている場所。画像や下書きの探索先に加わる | qiita-publish-prep / qiita-archive |
 
-設定はインストール時の `--config KEY=VALUE`（繰り返し可）か、セッション内の `/plugin configure blog-skills@ryuki-blog-skills` で入力・変更します。値が未設定のままスキルを呼ぶと、スクリプトが「環境固有の値が未設定です」と止まり、スキルが設定を案内します。
+設定はインストール時の `--config KEY=VALUE`（繰り返し可）か、セッション内の `/plugin configure blog-skills@ryuki-plugins` で入力・変更します。値が未設定のままスキルを呼ぶと、スクリプトが「環境固有の値が未設定です」と止まり、スキルが設定を案内します。
 
 ## 手順書からの参照のしかた
 
@@ -55,11 +55,11 @@ python3 skills/qiita-publish-prep/scripts/qiita_prep.py apply ~/work/articles/dr
 claude --plugin-dir ~/path/to/blog-skills
 ```
 
-設定値まで含めて本番と同じ形で試すなら、ローカルのパスをマーケットプレイスとして登録してインストールします。
+設定値まで含めて本番と同じ形で試すなら、配布元のマーケットプレイス（[ryuki-imachi/claude-plugins](https://github.com/ryuki-imachi/claude-plugins)）を手元に clone し、`marketplace.json` の blog-skills の `source` を手元のリポジトリの相対パスに書き換えたものを登録してインストールします。
 
 ```
-claude plugin marketplace add ~/path/to/blog-skills
-claude plugin install blog-skills@ryuki-blog-skills
+claude plugin marketplace add ~/path/to/claude-plugins
+claude plugin install blog-skills@ryuki-plugins --config articles_dir=~/work/articles
 ```
 
-変更を反映するには `claude plugin update blog-skills@ryuki-blog-skills` を実行します。GitHub から入れ直すときは、先に `claude plugin marketplace remove ryuki-blog-skills` でローカル登録を外します。
+変更を反映するには `claude plugin update blog-skills@ryuki-plugins` を実行します。GitHub 版に戻すときは `claude plugin marketplace add ryuki-imachi/claude-plugins` を再実行すると、同じ名前の登録が置き換わります。
