@@ -17,12 +17,15 @@ Claude Code のプラグインとしてインストールします。
 
 ```
 claude plugin marketplace add ryuki-imachi/blog-skills
-claude plugin install blog-skills@ryuki-blog-skills
+claude plugin install blog-skills@ryuki-blog-skills \
+  --config articles_dir=~/work/articles \
+  --config qiita_dir=~/work/qiita \
+  --config style_file=~/work/articles/my-style.md
 ```
 
 Claude Code のセッション内なら `/plugin marketplace add ryuki-imachi/blog-skills` と `/plugin install blog-skills@ryuki-blog-skills` でも同じです。
 
-インストール後、`/plugin` → blog-skills → Configure で自分の環境の値を入れます。記事リポジトリのパス以外は、使うスキルに応じて必要なものだけで構いません。
+インストール時に `--config` で自分の環境の値を渡せます（あとから変えるときはセッション内で `/plugin configure blog-skills@ryuki-blog-skills`）。記事リポジトリのパス以外は、使うスキルに応じて必要なものだけで構いません。
 
 | 設定値 | 使うスキル |
 |---|---|

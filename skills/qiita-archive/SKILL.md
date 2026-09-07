@@ -37,7 +37,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/qiita-archive/scripts/qiita_archive.py" in
 --obsidian-dir "${user_config.obsidian_dir}"
 ```
 
-値が空でスクリプトが「環境固有の値が未設定です」と止まったら、`/plugin` → blog-skills → Configure
+値が空でスクリプトが「環境固有の値が未設定です」と止まったら、`/plugin configure blog-skills@ryuki-blog-skills`
 で設定するよう案内して中止する。
 
 引数はパスでも slug でもよい。slug のときは記事リポジトリ（と旧置き場が設定されていればそこも）を

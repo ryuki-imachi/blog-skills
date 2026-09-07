@@ -13,7 +13,7 @@
 | `style_file` | ファイル | review-blog が最初に読む文体ルールの Markdown。[skills/review-blog/references/my-style.md](../skills/review-blog/references/my-style.md) を参考に自分のものを書く | review-blog |
 | `obsidian_dir` | ディレクトリ（任意） | 記事リポジトリへ移す前の下書きや画像が残っている場所。画像や下書きの探索先に加わる | qiita-publish-prep / qiita-archive |
 
-設定は `/plugin` → blog-skills → Configure で入力・変更できます。値が未設定のままスキルを呼ぶと、スクリプトが「環境固有の値が未設定です」と止まり、スキルが設定を案内します。
+設定はインストール時の `--config KEY=VALUE`（繰り返し可）か、セッション内の `/plugin configure blog-skills@ryuki-blog-skills` で入力・変更します。値が未設定のままスキルを呼ぶと、スクリプトが「環境固有の値が未設定です」と止まり、スキルが設定を案内します。
 
 ## 手順書からの参照のしかた
 
