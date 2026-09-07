@@ -20,20 +20,44 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-HOME = Path.home()
-ARTICLES = HOME / "Desktop/work/articles"
-DRAFTS = ARTICLES / "drafts"
-PUBLISHED = ARTICLES / "published"
-BOARD = ARTICLES / "board.md"
-OBSIDIAN_MEMO = HOME / "Desktop/work/obsidian/memo"
-QIITA_PUBLIC = HOME / "Desktop/work/qiita/public"
+# 環境固有の値。引数（無ければ BLOG_SKILLS_* 環境変数）から configure() が設定する
+ARTICLES = DRAFTS = PUBLISHED = BOARD = OBSIDIAN = QIITA_DIR = QIITA_PUBLIC = None
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+# ------------------------------------------------------------------- 設定
+
+def _pick(value, env):
+    v = value if value is not None else os.environ.get(env, "")
+    v = v.strip()
+    return v or None
+
+
+def configure(args):
+    """環境固有の値を引数（無ければ BLOG_SKILLS_* 環境変数）から設定する。"""
+    global ARTICLES, DRAFTS, PUBLISHED, BOARD, OBSIDIAN, QIITA_DIR, QIITA_PUBLIC
+    articles = _pick(args.articles_dir, "BLOG_SKILLS_ARTICLES_DIR")
+    qiita = _pick(args.qiita_dir, "BLOG_SKILLS_QIITA_DIR")
+    obsidian = _pick(args.obsidian_dir, "BLOG_SKILLS_OBSIDIAN_DIR")
+    missing = [n for n, v in (("--articles-dir", articles), ("--qiita-dir", qiita)) if not v]
+    if missing:
+        sys.exit("環境固有の値が未設定です: " + ", ".join(missing)
+                 + "\n  プラグインの設定（/plugin → blog-skills → Configure）で入力するか、"
+                 "引数または BLOG_SKILLS_* 環境変数で指定してください")
+    ARTICLES = Path(articles).expanduser().resolve()
+    DRAFTS = ARTICLES / "drafts"
+    PUBLISHED = ARTICLES / "published"
+    BOARD = ARTICLES / "board.md"
+    OBSIDIAN = Path(obsidian).expanduser().resolve() if obsidian else None
+    QIITA_DIR = Path(qiita).expanduser().resolve()
+    QIITA_PUBLIC = QIITA_DIR / "public"
 
 
 # ---------------------------------------------------------------- frontmatter
@@ -119,10 +143,11 @@ def resolve_draft(arg: str):
         return p.resolve(), None
     if not SLUG_RE.match(arg):
         return None, f"パスとして存在せず、slug の形式でもありません: {arg}"
-    roots = [str(d) for d in (ARTICLES, OBSIDIAN_MEMO) if d.is_dir()]
+    roots = [str(d) for d in (ARTICLES, OBSIDIAN) if d is not None and d.is_dir()]
     hits = subprocess.run(
         ["grep", "-rlE", rf"^slug:\s*['\"]?{re.escape(arg)}['\"]?\s*$",
-         "--include=*.md", *roots],
+         "--include=*.md", "--exclude-dir=.obsidian", "--exclude-dir=.trash",
+         "--exclude-dir=.git", *roots],
         capture_output=True, text=True).stdout.split()
     hits = [Path(h) for h in hits if not h.endswith(".review.md")]
     if not hits:
@@ -169,7 +194,7 @@ def analyze(arg: str):
     info["qiita_title"] = qfm.get("title")
     if not info["qiita_id"]:
         info["blockers"].append(
-            f"id が null です → `cd ~/Desktop/work/qiita && npx qiita publish {slug}` を先に実行")
+            f"id が null です → `cd {QIITA_DIR} && npx qiita publish {slug}` を先に実行")
     if info["private"]:
         info["warns"].append("private: true のままです（限定共有）。本公開後にアーカイブするのが本来の順序")
     if fm.get("status") == "published":
@@ -283,11 +308,16 @@ def cmd_apply(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    common = argparse.ArgumentParser(add_help=False)
+    g = common.add_argument_group("環境固有の値（未指定なら BLOG_SKILLS_* 環境変数を使う）")
+    g.add_argument("--articles-dir", help="記事リポジトリ（drafts/ published/ board.md がある場所）")
+    g.add_argument("--qiita-dir", help="Qiita CLI ワークスペース（public/ を参照する）")
+    g.add_argument("--obsidian-dir", help="旧置き場（任意。slug で下書きを探すときの探索先に加える）")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    i = sub.add_parser("inspect", help="特定・検証のみ（変更しない）")
+    i = sub.add_parser("inspect", parents=[common], help="特定・検証のみ（変更しない）")
     i.add_argument("target", help="下書きの絶対パス、または slug")
     i.set_defaults(func=cmd_inspect)
-    a = sub.add_parser("apply", help="frontmatter 更新とファイル移動を実行")
+    a = sub.add_parser("apply", parents=[common], help="frontmatter 更新とファイル移動を実行")
     a.add_argument("target", help="下書きの絶対パス、または slug")
     a.add_argument("--date", help="published_at（既定は既存値、無ければ今日）")
     a.add_argument("--allow-private", action="store_true",
@@ -295,6 +325,7 @@ def main():
     a.add_argument("--dry-run", action="store_true")
     a.set_defaults(func=cmd_apply)
     args = ap.parse_args()
+    configure(args)
     return args.func(args)
 
 

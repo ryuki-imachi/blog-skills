@@ -27,10 +27,20 @@ frontmatter の更新とファイル移動は `scripts/qiita_archive.py` が決�
 ### 1. 確認
 
 ```bash
-~/.claude/skills/qiita-archive/scripts/qiita_archive.py inspect <下書きパス | slug>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/qiita-archive/scripts/qiita_archive.py" inspect <下書きパス | slug> <共通オプション>
 ```
 
-引数はパスでも slug でもよい。slug のときは articles/（無ければ旧 obsidian/memo/）を
+`<共通オプション>` は、プラグインの設定（userConfig）から受け取る環境固有の値で、毎回まとめて渡す。
+
+```
+--articles-dir "${user_config.articles_dir}" --qiita-dir "${user_config.qiita_dir}" \
+--obsidian-dir "${user_config.obsidian_dir}"
+```
+
+値が空でスクリプトが「環境固有の値が未設定です」と止まったら、`/plugin` → blog-skills → Configure
+で設定するよう案内して中止する。
+
+引数はパスでも slug でもよい。slug のときは記事リポジトリ（と旧置き場が設定されていればそこも）を
 検索して下書きを特定する。候補が複数・ゼロなら中止するので、リュウキに知らせる。
 
 `✗` が出たら、その原因を伝えて止まる。よくあるのは次の2つ。
@@ -44,7 +54,7 @@ frontmatter の更新とファイル移動は `scripts/qiita_archive.py` が決�
 ### 2. 実行
 
 ```bash
-~/.claude/skills/qiita-archive/scripts/qiita_archive.py apply <下書きパス | slug> [--dry-run]
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/qiita-archive/scripts/qiita_archive.py" apply <下書きパス | slug> <共通オプション> [--dry-run]
 ```
 
 `status: published` / `qiita_id` / `published_at` を下書きの frontmatter に反映し、
@@ -53,7 +63,7 @@ frontmatter の更新とファイル移動は `scripts/qiita_archive.py` が決�
 
 ### 3. board.md の更新（このスキルの本体）
 
-`~/Desktop/work/articles/board.md` を次の3点で更新する。ボードは記事の進行状態の正なので、
+`${user_config.articles_dir}/board.md` を次の3点で更新する。ボードは記事の進行状態の正なので、
 ファイル移動とセットで必ず更新する。
 
 1. **ボードの表から該当行を削除する**
@@ -75,5 +85,4 @@ frontmatter の更新とファイル移動は `scripts/qiita_archive.py` が決�
 ## 関連
 
 - 前段: `qiita-publish-prep`（投稿前の変換）
-- 設計判断: `~/Desktop/work/blog-pipeline/DECISIONS.md`（D-18 frontmatter 規約）
-- 運用ルール: `~/Desktop/work/articles/README.md`
+- 下書きの frontmatter 規約や運用ルールが記事リポジトリ（`${user_config.articles_dir}`）の README にあれば、それに従う

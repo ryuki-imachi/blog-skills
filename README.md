@@ -1,63 +1,63 @@
-# ブログ執筆スキル一式
+# blog-skills
 
-私が普段のブログ執筆で使っているClaude Codeのスキル4本です。記事執筆方法の共有会で配布したものを、公開用に一部プレースホルダーへ置き換えて公開しています。
+私が普段のブログ執筆で使っている Claude Code のスキル4本を、プラグインとして配布しています。記事執筆方法の共有会で配ったものが元です。
 
 | スキル | 役割 |
 |---|---|
-| review-blog | 投稿前レビュー。自分の過去記事を基準に、文体・構成・技術的正確性をチェック |
-| qiita-publish-prep | Qiita投稿準備。Pythonスクリプトが下書きをQiita CLI用に変換し、画像をS3+CloudFrontへ同期。スキル側はslug・画像名・組織の3つを判断するだけ |
-| qiita-archive | 投稿後の後片付け。Pythonスクリプトがfrontmatter更新とアーカイブ移動を行い、スキル側はステータスボードの更新だけ |
-| export-drawio | drawioの図を高解像度PNG（3倍・白背景。`--transparent` で透過）に書き出し |
+| review-blog | 投稿前レビュー。自分の過去記事と文体ルールを基準に、文体・構成・技術的正確性をチェック |
+| qiita-publish-prep | Qiita 投稿準備。Python スクリプトが下書きを Qiita CLI 用に変換し、画像を S3 + CloudFront へ同期。スキル側は slug・画像名・組織の3つを判断するだけ |
+| qiita-archive | 投稿後の後片付け。Python スクリプトが frontmatter 更新とアーカイブ移動を行い、スキル側はステータスボードの更新だけ |
+| export-drawio | drawio の図を高解像度 PNG（3倍・白背景。`--transparent` で透過）に書き出し |
 
-## 全体のワークフロー
-
-前提として、記事は articles リポジトリ（プライベート）の `drafts/` で書き始めます。`drafts/` 配下のステータスフォルダ（10_アイデア / 20_執筆中 / 30_レビュー待ち / 40_限定公開）が記事の状態の正で、書き上がったらレビュー → 限定共有で投稿 → 本公開 → アーカイブと進みます。スキル3本はこの流れの決まった位置で呼ばれる、という分担です。
-
-![記事執筆ワークフロー全体図](images/workflow-overview.png)
-
-公開の最終操作（`npx qiita publish`）だけはスキルにやらせず、必ず人間が実行する線引きにしています。export-drawio はこの流れとは独立した小物で、記事に貼る図を書き出すときに単発で呼びます。
-
-## 各スキルの仕組み
-
-### review-blog（投稿前レビュー）
-
-文体ルール（`references/my-style.md`）と自分の過去記事2〜3本を必ず読んでからレビューする作りです。指摘は「機械的な修正（考えなくていい）」と「判断してほしい提案（考えるところ）」の2層に分けて出てきます。
-
-![review-blogの仕組み](images/review-blog-flow.png)
-
-### qiita-publish-prep（Qiita投稿準備）
-
-articlesで書いた下書きをQiita CLIが読める形に変換しつつ、画像をS3へ同期してMarkdown内の参照をCDNのURLに置き換えます。
-
-変換・検証・ファイル操作は `scripts/qiita_prep.py` に切り出してあり、決定論的に動きます（2026-09-04にスクリプト化）。`inspect` で下書きを解析して frontmatter・画像の所在・変換対象・警告を出し、`apply` で slug の書き戻し → 画像の集約 → S3 同期 → 本文変換 → 出力までを一度に行います。スキル（SKILL.md）に残した仕事は、スクリプトが自力で決められない3つの判断だけです。S3 のプレフィックスになる slug、日本語や記号を含む画像ファイルの英語名、Qiita の organization を付けるかどうか。ここは記事を読んで候補を出し、人間に選んでもらいます。
-
-![qiita-publish-prepの仕組み](images/qiita-publish-prep-flow.png)
-
-### qiita-archive（投稿後の後片付け）
-
-slug と qiita_id を元下書きに残しておくことで、記事を更新するときも同じURL・同じ画像パスのまま再投稿できるようにしています。
-
-frontmatter の更新とファイル移動は `scripts/qiita_archive.py` に切り出しました（2026-09-04）。`inspect` で対象と公開状態を確かめ（未公開なら止まる）、`apply` で `status` / `qiita_id` / `published_at` を書き込んでレビューレポートごと `published/` へ移します。スキルに残したのはステータスボード（board.md）の更新だけで、ここは記事ごとに書く内容が違うので自動化していません。
-
-![qiita-archiveの仕組み](images/qiita-archive-flow.png)
+記事は「記事リポジトリの `drafts/` で書く → review-blog でレビュー → qiita-publish-prep で変換して限定共有 → 本公開 → qiita-archive で片付け」の順に流れます。全体の流れと各スキルの仕組みは [docs/](docs/) にまとめています。
 
 ## 導入方法
 
-フォルダごと `~/.claude/skills/` にコピーすると、Claude Codeで `/review-blog` のようにスラッシュコマンドとして呼べるようになります。
+Claude Code のプラグインとしてインストールします。
 
 ```
-cp -R review-blog qiita-publish-prep qiita-archive export-drawio ~/.claude/skills/
+claude plugin marketplace add ryuki-imachi/blog-skills
+claude plugin install blog-skills@ryuki-blog-skills
 ```
+
+Claude Code のセッション内なら `/plugin marketplace add ryuki-imachi/blog-skills` と `/plugin install blog-skills@ryuki-blog-skills` でも同じです。
+
+インストール後、`/plugin` → blog-skills → Configure で自分の環境の値を入れます。記事リポジトリのパス以外は、使うスキルに応じて必要なものだけで構いません。
+
+| 設定値 | 使うスキル |
+|---|---|
+| 記事リポジトリ | review-blog / qiita-publish-prep / qiita-archive |
+| Qiita CLI ワークスペース | qiita-publish-prep / qiita-archive |
+| S3 バケット名、CDN ドメイン | qiita-publish-prep |
+| 文体ルールのファイル | review-blog |
+| 旧置き場（任意） | qiita-publish-prep / qiita-archive |
+
+各設定値の意味と、スクリプトを手で動かすときの引数は [docs/configuration.md](docs/configuration.md) を見てください。
+
+## 使い方
+
+```
+/review-blog <下書きの md ファイル>
+/qiita-publish-prep <下書きの md ファイル>
+/qiita-archive <下書きの md ファイル または slug>
+/export-drawio [drawio ファイル] [--transparent]
+```
+
+同名のスキルが他にあるときは `/blog-skills:review-blog` のようにプラグイン名を付けて呼びます。
 
 ## そのまま使えるか
 
-私の環境（ファイルパス・過去記事の置き場・運用ルール）が手順書にそのまま書いてあるので、動かすには自分の環境向けの書き換えが必要です。
+- review-blog … 文体ルールのファイルを自分で用意すれば使えます。[skills/review-blog/references/my-style.md](skills/review-blog/references/my-style.md) が私のものなので、書き方の参考にしてください。まず自分の文体ルールを言語化するところから始めるのがおすすめです
+- qiita-publish-prep … S3 + CloudFront の画像配信基盤が前提なので、バケットと CDN を先に用意する必要があります。変換ルールや「どこで人間に確認を取るか」の設計の参考にもなります
+- qiita-archive … 記事リポジトリと Qiita CLI ワークスペースがあれば使えます
+- export-drawio … draw.io デスクトップアプリ（`brew install --cask drawio`）があればそのまま動きます
 
-- review-blog … 過去記事のパスと `references/my-style.md`（文体ルール）を自分のものに差し替えれば使えます。まず自分の文体ルールを言語化するところから始めるのがおすすめです
-- qiita-publish-prep … S3+CloudFrontの画像配信基盤が前提なので、そのままでは動きません。`scripts/qiita_prep.py` 先頭の定数（記事リポジトリのパス、バケット名、CDNのドメイン）を自分の環境に合わせれば動く作りです。変換ルールや「どこで人間に確認を取るか」の設計の参考にしてください
-- qiita-archive … `scripts/qiita_archive.py` 先頭の定数（記事リポジトリと Qiita CLI ワークスペースのパス）を自分の構成に合わせれば使えます
-- export-drawio … draw.ioデスクトップアプリ（`brew install --cask drawio`）があればそのまま動きます。既定は白背景（余白20px）で、`--transparent` を付けたときだけ透過にします。透過PNGはDiscordや暗いテーマのビューアで読めないことがあるので、貼る先が決まっていなければ白背景にしておく方が無難です
+## ドキュメント
+
+- [docs/workflow.md](docs/workflow.md) … 記事執筆の全体の流れと、前提にしている記事リポジトリの構成
+- [docs/review-blog.md](docs/review-blog.md) / [docs/qiita-publish-prep.md](docs/qiita-publish-prep.md) / [docs/qiita-archive.md](docs/qiita-archive.md) / [docs/export-drawio.md](docs/export-drawio.md) … 各スキルの仕組み
+- [docs/configuration.md](docs/configuration.md) … 設定値の意味、スクリプトの手動実行、開発中の試し方
 
 ## 取り扱いについて
 
-個人環境のフォルダ構成や運用ルールは、実物の雰囲気が伝わるようあえてそのまま残しています。S3バケット名など環境固有の識別子だけ `<your-bucket>` のようなプレースホルダーに置き換えてあります。ライセンスはMITです。自由にコピーして、自分の環境に合わせて書き換えて使ってください。
+スキルの手順書には、私の運用ルールや「ユーザーに確認する」といった書きぶりが、実物の雰囲気が伝わるようそのまま残っています。環境固有の値はプラグインの設定から渡すので、手順書やスクリプトを書き換える必要はありません。ライセンスは MIT です。

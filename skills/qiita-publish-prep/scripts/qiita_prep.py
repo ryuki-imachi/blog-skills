@@ -24,13 +24,40 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOME = Path.home()
-ARTICLES = HOME / "Desktop/work/articles"
-IMAGES_ROOT = ARTICLES / "images"
-OBSIDIAN = HOME / "Desktop/work/obsidian"
-QIITA_PUBLIC = HOME / "Desktop/work/qiita/public"
-BUCKET = "<your-bucket>"
-CDN_BASE = "https://<your-cdn-domain>"
+# 環境固有の値。引数（無ければ BLOG_SKILLS_* 環境変数）から configure() が設定する
+ARTICLES = IMAGES_ROOT = OBSIDIAN = QIITA_PUBLIC = None  # Path | None
+BUCKET = CDN_BASE = None  # str | None
+
+
+def _pick(value, env):
+    v = value if value is not None else os.environ.get(env, "")
+    v = v.strip()
+    return v or None
+
+
+def configure(args, need_aws: bool):
+    """環境固有の値を引数（無ければ BLOG_SKILLS_* 環境変数）から設定する。"""
+    global ARTICLES, IMAGES_ROOT, OBSIDIAN, QIITA_PUBLIC, BUCKET, CDN_BASE
+    articles = _pick(args.articles_dir, "BLOG_SKILLS_ARTICLES_DIR")
+    qiita = _pick(args.qiita_dir, "BLOG_SKILLS_QIITA_DIR")
+    obsidian = _pick(args.obsidian_dir, "BLOG_SKILLS_OBSIDIAN_DIR")
+    bucket = _pick(args.bucket, "BLOG_SKILLS_BUCKET")
+    cdn = _pick(args.cdn_domain, "BLOG_SKILLS_CDN_DOMAIN")
+    required = [("--articles-dir", articles), ("--qiita-dir", qiita)]
+    if need_aws:
+        required += [("--bucket", bucket), ("--cdn-domain", cdn)]
+    missing = [name for name, v in required if not v]
+    if missing:
+        sys.exit("環境固有の値が未設定です: " + ", ".join(missing)
+                 + "\n  プラグインの設定（/plugin → blog-skills → Configure）で入力するか、"
+                 "引数または BLOG_SKILLS_* 環境変数で指定してください")
+    ARTICLES = Path(articles).expanduser().resolve()
+    IMAGES_ROOT = ARTICLES / "images"
+    OBSIDIAN = Path(obsidian).expanduser().resolve() if obsidian else None
+    QIITA_PUBLIC = Path(qiita).expanduser().resolve() / "public"
+    BUCKET = bucket
+    if cdn:
+        CDN_BASE = "https://" + re.sub(r"^https?://", "", cdn).rstrip("/")
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"}
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -195,8 +222,8 @@ def resolve_image(name: str, target: str, draft_dir: Path, slug: str):
     for p in probes:
         if p.is_file():
             return p, "direct"
-    for root, label in ((IMAGES_ROOT, "articles/images"), (OBSIDIAN, "obsidian(旧置き場)")):
-        if not root.is_dir():
+    for root, label in ((IMAGES_ROOT, "articles/images"), (OBSIDIAN, "旧置き場")):
+        if root is None or not root.is_dir():
             continue
         for p in root.rglob(name):
             if any(part in (".obsidian", ".trash", ".git") for part in p.parts):
@@ -710,15 +737,22 @@ def cmd_apply(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    common = argparse.ArgumentParser(add_help=False)
+    g = common.add_argument_group("環境固有の値(未指定なら BLOG_SKILLS_* 環境変数を使う)")
+    g.add_argument("--articles-dir", help="記事リポジトリ(drafts/ images/ published/ がある場所)")
+    g.add_argument("--qiita-dir", help="Qiita CLI ワークスペース(public/ に出力する)")
+    g.add_argument("--obsidian-dir", help="旧置き場(任意。画像の探索先に加える)")
+    g.add_argument("--bucket", help="画像の同期先 S3 バケット名(apply で必須)")
+    g.add_argument("--cdn-domain", help="CloudFront のドメイン(apply で必須。例 images.example.com)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    i = sub.add_parser("inspect", help="解析のみ(ファイルを変更しない)")
+    i = sub.add_parser("inspect", parents=[common], help="解析のみ(ファイルを変更しない)")
     i.add_argument("draft")
     i.add_argument("--slug", help="frontmatter に slug が無い場合の仮指定")
     i.add_argument("--json", action="store_true")
     i.set_defaults(func=cmd_inspect)
 
-    p = sub.add_parser("apply", help="集約・S3同期・変換・出力を実行")
+    p = sub.add_parser("apply", parents=[common], help="集約・S3同期・変換・出力を実行")
     p.add_argument("draft")
     p.add_argument("--slug", help="slug(下書きの frontmatter にも書き戻す)")
     p.add_argument("--rename", action="append", default=[], metavar="OLD=NEW",
@@ -738,6 +772,7 @@ def main():
     p.set_defaults(func=cmd_apply)
 
     args = ap.parse_args()
+    configure(args, need_aws=(args.cmd == "apply" and not args.skip_sync))
     return args.func(args)
 
 

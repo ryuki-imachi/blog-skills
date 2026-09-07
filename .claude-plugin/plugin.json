@@ -1,0 +1,52 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "blog-skills",
+  "version": "1.0.0",
+  "description": "ブログ執筆スキル一式。投稿前レビュー（review-blog）、Qiita 投稿準備（qiita-publish-prep）、投稿後の後片付け（qiita-archive）、drawio 図の PNG 書き出し（export-drawio）",
+  "author": {
+    "name": "ryuki-imachi",
+    "email": "195699591+ryuki-imachi@users.noreply.github.com"
+  },
+  "repository": "https://github.com/ryuki-imachi/blog-skills",
+  "homepage": "https://github.com/ryuki-imachi/blog-skills",
+  "keywords": [
+    "blog",
+    "qiita",
+    "review",
+    "drawio"
+  ],
+  "license": "MIT",
+  "userConfig": {
+    "articles_dir": {
+      "type": "directory",
+      "title": "記事リポジトリ",
+      "description": "下書き（drafts/）、画像原本（images/<slug>/）、公開済み記事（published/）、ステータスボード（board.md）を置いているディレクトリ",
+      "required": true
+    },
+    "qiita_dir": {
+      "type": "directory",
+      "title": "Qiita CLI ワークスペース",
+      "description": "npx qiita init したディレクトリ。qiita-publish-prep が public/<slug>.md を出力し、qiita-archive が投稿状態を読む"
+    },
+    "bucket": {
+      "type": "string",
+      "title": "画像の同期先 S3 バケット名",
+      "description": "qiita-publish-prep が記事の画像を aws s3 sync で送る先。バケット名だけを書く"
+    },
+    "cdn_domain": {
+      "type": "string",
+      "title": "画像配信の CDN ドメイン",
+      "description": "上のバケットを配信する CloudFront のドメイン。images.example.com のようにスキーム無しで書く"
+    },
+    "style_file": {
+      "type": "file",
+      "title": "文体ルールのファイル",
+      "description": "review-blog が最初に読む自分の文体ルール（Markdown）。書き方は skills/review-blog/references/my-style.md を参考にする"
+    },
+    "obsidian_dir": {
+      "type": "directory",
+      "title": "旧置き場（任意）",
+      "description": "記事リポジトリへ移す前の下書きや画像が残っているディレクトリがあれば指定する。画像や下書きの探索先に加わる。無ければ空のまま"
+    }
+  }
+}

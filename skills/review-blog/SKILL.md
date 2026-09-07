@@ -19,8 +19,8 @@ allowed-tools:
 ## レビュー手順
 
 1. **対象ファイルを読む**: `$ARGUMENTS` のファイルを Read。引数が無ければユーザーに「レビュー対象のファイルパスを指定してください」と伝えて中止
-2. **スタイルガイドを読む**: 必ず最初に [references/my-style.md](references/my-style.md) を読む
-3. **過去記事を参照**: `~/Desktop/work/articles/published/` 配下から、レビュー対象と**ジャンルが近い**完成記事（5KB以上のmd）を Glob + Bash の `find ... -size +5k` で抽出し、2〜3本を Read
+2. **スタイルガイドを読む**: 必ず最初に `${user_config.style_file}` を読む。未設定・ファイルが無い場合は、[references/my-style.md](references/my-style.md) をひな形に自分の文体ルールを書いて `/plugin` → blog-skills → Configure で登録するよう案内して中止する
+3. **過去記事を参照**: `${user_config.articles_dir}/published/` 配下から、レビュー対象と**ジャンルが近い**完成記事（5KB以上のmd）を Glob + Bash の `find ... -size +5k` で抽出し、2〜3本を Read
    - トラブルシュート系 → 「〜しない／〜できない／〜表示されない」を含むファイル名
    - 実装/手順系 → 「〜してみた／〜を作る／〜する」を含むファイル名
    - 解説系 → 「〜とは／〜について」を含むファイル名
@@ -162,5 +162,5 @@ allowed-tools:
 /review-blog ~/Desktop/draft.md
 ```
 
-過去記事は自動で `~/Desktop/work/articles/published/` から
+過去記事は自動で `${user_config.articles_dir}/published/` から
 ジャンルに応じて選定するため、引数は対象ファイルパスのみ。
